@@ -1,2 +1,8 @@
 libxcb1
 libgl1
+libglib2.0-0
+libx11-6
+libxext6
+libsm6
+libxrender1
+libgomp1
