@@ -7,7 +7,7 @@ import io
 import zipfile
 import shutil
 import subprocess
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -27,10 +27,14 @@ def convert_doc_to_docx(doc_path):
     if office_command is None:
         raise RuntimeError("LibreOffice is required to convert legacy .doc files.")
 
-    with tempfile.TemporaryDirectory() as output_dir:
+    with tempfile.TemporaryDirectory() as output_dir, tempfile.TemporaryDirectory() as profile_dir:
+        libreoffice_env = os.environ.copy()
+        libreoffice_env["HOME"] = profile_dir
+
         completed_process = subprocess.run(
             [
                 office_command,
+                f"-env:UserInstallation={Path(profile_dir).as_uri()}",
                 '--headless',
                 '--convert-to',
                 'docx',
@@ -42,6 +46,7 @@ def convert_doc_to_docx(doc_path):
             text=True,
             timeout=120,
             check=False,
+            env=libreoffice_env,
         )
 
         output_path = os.path.join(
