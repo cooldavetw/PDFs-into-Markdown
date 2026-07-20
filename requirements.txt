@@ -1,3 +1,4 @@
 streamlit
 docling-slim[standard]
+openpyxl
 watchdog

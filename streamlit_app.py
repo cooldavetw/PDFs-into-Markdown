@@ -9,12 +9,15 @@ import shutil
 import subprocess
 from pathlib import Path, PurePosixPath
 
+from openpyxl import load_workbook
+
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 DIRECT_CONVERSION_EXTENSIONS = ('.pdf', '.docx')
-SUPPORTED_DOCUMENT_EXTENSIONS = DIRECT_CONVERSION_EXTENSIONS + ('.doc',)
+SPREADSHEET_EXTENSIONS = ('.xlsx', '.xls')
+SUPPORTED_DOCUMENT_EXTENSIONS = DIRECT_CONVERSION_EXTENSIONS + ('.doc',) + SPREADSHEET_EXTENSIONS
 
 
 def convert_document_to_markdown(document_path):
@@ -63,6 +66,145 @@ def convert_doc_to_docx(doc_path):
             return tmp_file.name
 
 
+def convert_xls_to_xlsx(xls_path):
+    office_command = shutil.which('soffice') or shutil.which('libreoffice')
+    if office_command is None:
+        raise RuntimeError("LibreOffice is required to convert legacy .xls files.")
+
+    with tempfile.TemporaryDirectory() as output_dir, tempfile.TemporaryDirectory() as profile_dir:
+        libreoffice_env = os.environ.copy()
+        libreoffice_env["HOME"] = profile_dir
+
+        completed_process = subprocess.run(
+            [
+                office_command,
+                f"-env:UserInstallation={Path(profile_dir).as_uri()}",
+                '--headless',
+                '--convert-to',
+                'xlsx',
+                '--outdir',
+                output_dir,
+                xls_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env=libreoffice_env,
+        )
+
+        output_path = os.path.join(
+            output_dir,
+            os.path.splitext(os.path.basename(xls_path))[0] + '.xlsx',
+        )
+        if completed_process.returncode != 0 or not os.path.exists(output_path):
+            error_output = completed_process.stderr or completed_process.stdout
+            raise RuntimeError(f"Error converting XLS file: {error_output.strip()}")
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            with open(output_path, 'rb') as converted_file:
+                shutil.copyfileobj(converted_file, tmp_file)
+            return tmp_file.name
+
+
+def stringify_spreadsheet_value(value):
+    if value is None:
+        return ""
+
+    text = str(value)
+    return text.replace('|', '\\|').replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
+
+
+def trim_empty_spreadsheet_edges(rows):
+    while rows and all(value in (None, "") for value in rows[-1]):
+        rows.pop()
+
+    if not rows:
+        return []
+
+    last_column_index = -1
+    for row in rows:
+        for index, value in enumerate(row):
+            if value not in (None, ""):
+                last_column_index = max(last_column_index, index)
+
+    return [row[:last_column_index + 1] for row in rows]
+
+
+def worksheet_to_markdown_table(worksheet):
+    rows = [
+        list(row)
+        for row in worksheet.iter_rows(values_only=True)
+    ]
+    rows = trim_empty_spreadsheet_edges(rows)
+
+    if not rows:
+        return "_No data found._"
+
+    column_count = max(len(row) for row in rows)
+    normalized_rows = [
+        row + [None] * (column_count - len(row))
+        for row in rows
+    ]
+    header = [
+        stringify_spreadsheet_value(value) or f"Column {index + 1}"
+        for index, value in enumerate(normalized_rows[0])
+    ]
+    body_rows = normalized_rows[1:]
+
+    markdown_lines = [
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join(["---"] * column_count) + " |",
+    ]
+    for row in body_rows:
+        markdown_lines.append(
+            "| " + " | ".join(stringify_spreadsheet_value(value) for value in row) + " |"
+        )
+
+    return "\n".join(markdown_lines)
+
+
+def convert_spreadsheet_to_markdown(spreadsheet_path):
+    workbook = load_workbook(spreadsheet_path, data_only=True, read_only=True)
+    markdown_sections = []
+
+    try:
+        for worksheet in workbook.worksheets:
+            markdown_sections.append(
+                f"## {worksheet.title}\n\n{worksheet_to_markdown_table(worksheet)}"
+            )
+    finally:
+        workbook.close()
+
+    return "\n\n".join(markdown_sections)
+
+
+def convert_path_to_markdown(file_path, file_extension):
+    converted_docx_path = None
+    converted_xlsx_path = None
+
+    try:
+        conversion_path = file_path
+        if file_extension == '.doc':
+            converted_docx_path = convert_doc_to_docx(file_path)
+            conversion_path = converted_docx_path
+        elif file_extension == '.xls':
+            converted_xlsx_path = convert_xls_to_xlsx(file_path)
+            conversion_path = converted_xlsx_path
+
+        if file_extension in SPREADSHEET_EXTENSIONS:
+            return convert_spreadsheet_to_markdown(conversion_path)
+
+        return convert_document_to_markdown(conversion_path)
+    finally:
+        if converted_docx_path and os.path.exists(converted_docx_path):
+            os.unlink(converted_docx_path)
+            logger.debug("Temporary converted DOCX file deleted")
+        if converted_xlsx_path and os.path.exists(converted_xlsx_path):
+            os.unlink(converted_xlsx_path)
+            logger.debug("Temporary converted XLSX file deleted")
+
+
 def convert_uploaded_document(uploaded_file):
     file_extension = os.path.splitext(uploaded_file.name)[1].lower()
 
@@ -71,21 +213,12 @@ def convert_uploaded_document(uploaded_file):
         tmp_path = tmp_file.name
         logger.debug(f"Temporary file created at: {tmp_path}")
 
-    converted_docx_path = None
     try:
-        conversion_path = tmp_path
-        if file_extension == '.doc':
-            converted_docx_path = convert_doc_to_docx(tmp_path)
-            conversion_path = converted_docx_path
-
-        return convert_document_to_markdown(conversion_path)
+        return convert_path_to_markdown(tmp_path, file_extension)
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
             logger.debug("Temporary file deleted")
-        if converted_docx_path and os.path.exists(converted_docx_path):
-            os.unlink(converted_docx_path)
-            logger.debug("Temporary converted DOCX file deleted")
 
 
 def is_supported_document(filename):
@@ -141,14 +274,8 @@ def convert_uploaded_zip(uploaded_file):
                     tmp_path = tmp_file.name
                     logger.debug(f"Temporary ZIP document created at: {tmp_path}")
 
-                converted_docx_path = None
                 try:
-                    conversion_path = tmp_path
-                    if file_extension == '.doc':
-                        converted_docx_path = convert_doc_to_docx(tmp_path)
-                        conversion_path = converted_docx_path
-
-                    markdown_text = convert_document_to_markdown(conversion_path)
+                    markdown_text = convert_path_to_markdown(tmp_path, file_extension)
                     output_name = markdown_name_for_zip_member(member.filename, used_names)
                     output_zip.writestr(output_name, markdown_text)
                     markdown_files.append((output_name, markdown_text))
@@ -157,9 +284,6 @@ def convert_uploaded_zip(uploaded_file):
                     if os.path.exists(tmp_path):
                         os.unlink(tmp_path)
                         logger.debug("Temporary ZIP document deleted")
-                    if converted_docx_path and os.path.exists(converted_docx_path):
-                        os.unlink(converted_docx_path)
-                        logger.debug("Temporary ZIP converted DOCX file deleted")
 
     markdown_zip_buffer.seek(0)
     return markdown_zip_buffer.getvalue(), converted_count, markdown_files, uploaded_document_names
@@ -248,10 +372,10 @@ if 'converter' not in st.session_state:
 
 # Main upload area
 uploaded_file = st.file_uploader(
-    "Upload a PDF, Word document, or ZIP file containing documents",
-    type=['pdf', 'doc', 'docx', 'zip'],
+    "Upload a PDF, Word document, Excel workbook, or ZIP file containing documents",
+    type=['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip'],
     key='pdf_uploader',
-    help="Drag and drop or click to select one PDF/Word file or one ZIP file containing documents (max 200MB)"
+    help="Drag and drop or click to select one PDF/Word/Excel file or one ZIP file containing documents (max 200MB)"
 )
 
 # Unified convert button
@@ -306,6 +430,6 @@ if convert_clicked:
                 st.error(f"Error processing ZIP file: {str(e)}")
 
         else:
-            st.error("Please upload a PDF, Word document, or ZIP file containing supported documents.")
+            st.error("Please upload a PDF, Word document, Excel workbook, or ZIP file containing supported documents.")
     else:
-        st.warning("Please upload a PDF, Word document, or ZIP file containing supported documents first")
+        st.warning("Please upload a PDF, Word document, Excel workbook, or ZIP file containing supported documents first")
