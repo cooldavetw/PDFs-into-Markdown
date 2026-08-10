@@ -361,7 +361,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("文件轉 Markdown 轉換器")
+st.title("文件 (PDF, Word, Excel) Markdown 轉換器")
 
 # Initialize session state if it doesn't exist
 if 'converter' not in st.session_state:
