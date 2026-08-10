@@ -363,6 +363,16 @@ st.markdown("""
 
 st.title("文件 (PDF, Word, Excel) Markdown 轉換器")
 
+with st.expander("使用說明"):
+    st.markdown(
+        """
+        - 支援格式：PDF、DOC、DOCX、XLS、XLSX、ZIP。
+        - 上傳單一文件後，按下「轉換為 Markdown」即可預覽並下載 `.md` 檔案。
+        - 上傳 ZIP 檔案時，系統會轉換其中所有支援的文件，並提供 Markdown ZIP 檔案下載。
+        - 舊版 DOC 或 XLS 檔案需要系統安裝 LibreOffice 才能轉換。
+        """
+    )
+
 # Initialize session state if it doesn't exist
 if 'converter' not in st.session_state:
     try:
