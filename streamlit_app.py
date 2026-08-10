@@ -28,7 +28,7 @@ def convert_document_to_markdown(document_path):
 def convert_doc_to_docx(doc_path):
     office_command = shutil.which('soffice') or shutil.which('libreoffice')
     if office_command is None:
-        raise RuntimeError("LibreOffice is required to convert legacy .doc files.")
+        raise RuntimeError("需要 LibreOffice 才能轉換舊版 .doc 檔案。")
 
     with tempfile.TemporaryDirectory() as output_dir, tempfile.TemporaryDirectory() as profile_dir:
         libreoffice_env = os.environ.copy()
@@ -58,7 +58,7 @@ def convert_doc_to_docx(doc_path):
         )
         if completed_process.returncode != 0 or not os.path.exists(output_path):
             error_output = completed_process.stderr or completed_process.stdout
-            raise RuntimeError(f"Error converting DOC file: {error_output.strip()}")
+            raise RuntimeError(f"轉換 DOC 檔案時發生錯誤：{error_output.strip()}")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_file:
             with open(output_path, 'rb') as converted_file:
@@ -69,7 +69,7 @@ def convert_doc_to_docx(doc_path):
 def convert_xls_to_xlsx(xls_path):
     office_command = shutil.which('soffice') or shutil.which('libreoffice')
     if office_command is None:
-        raise RuntimeError("LibreOffice is required to convert legacy .xls files.")
+        raise RuntimeError("需要 LibreOffice 才能轉換舊版 .xls 檔案。")
 
     with tempfile.TemporaryDirectory() as output_dir, tempfile.TemporaryDirectory() as profile_dir:
         libreoffice_env = os.environ.copy()
@@ -99,7 +99,7 @@ def convert_xls_to_xlsx(xls_path):
         )
         if completed_process.returncode != 0 or not os.path.exists(output_path):
             error_output = completed_process.stderr or completed_process.stdout
-            raise RuntimeError(f"Error converting XLS file: {error_output.strip()}")
+            raise RuntimeError(f"轉換 XLS 檔案時發生錯誤：{error_output.strip()}")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
             with open(output_path, 'rb') as converted_file:
@@ -139,7 +139,7 @@ def worksheet_to_markdown_table(worksheet):
     rows = trim_empty_spreadsheet_edges(rows)
 
     if not rows:
-        return "_No data found._"
+        return "_找不到資料。_"
 
     column_count = max(len(row) for row in rows)
     normalized_rows = [
@@ -147,7 +147,7 @@ def worksheet_to_markdown_table(worksheet):
         for row in rows
     ]
     header = [
-        stringify_spreadsheet_value(value) or f"Column {index + 1}"
+        stringify_spreadsheet_value(value) or f"欄位 {index + 1}"
         for index, value in enumerate(normalized_rows[0])
     ]
     body_rows = normalized_rows[1:]
@@ -262,7 +262,7 @@ def convert_uploaded_zip(uploaded_file):
         ]
 
         if not document_members:
-            raise ValueError("The ZIP file does not contain any supported document files.")
+            raise ValueError("ZIP 檔案中不包含任何支援的文件檔案。")
 
         with zipfile.ZipFile(markdown_zip_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as output_zip:
             for member in document_members:
@@ -290,9 +290,9 @@ def convert_uploaded_zip(uploaded_file):
 
 
 def display_uploaded_documents(document_names, key):
-    st.subheader("Uploaded Documents")
+    st.subheader("已上傳的文件")
     st.text_area(
-        "Uploaded Documents",
+        "已上傳的文件",
         "\n".join(document_names),
         height=min(300, 70 + (len(document_names) * 24)),
         key=key,
@@ -301,9 +301,9 @@ def display_uploaded_documents(document_names, key):
 
 
 def display_markdown_preview(markdown_text, key):
-    st.subheader("Converted Markdown")
+    st.subheader("轉換後的 Markdown")
     st.text_area(
-        "Converted Markdown",
+        "轉換後的 Markdown",
         markdown_text,
         height=500,
         key=key,
@@ -312,16 +312,19 @@ def display_markdown_preview(markdown_text, key):
 
 
 def display_zip_markdown_previews(markdown_files):
-    st.subheader("Converted Markdown Files")
+    st.subheader("轉換後的 Markdown 檔案")
     for index, (filename, markdown_text) in enumerate(markdown_files):
         with st.expander(filename):
             st.text_area(
-                "Converted Markdown",
+                "轉換後的 Markdown",
                 markdown_text,
                 height=400,
                 key=f"zip_markdown_preview_{index}",
                 label_visibility="collapsed",
             )
+
+
+st.set_page_config(page_title="文件轉 Markdown 轉換器")
 
 # Custom CSS for better layout
 st.markdown("""
@@ -358,7 +361,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("Document to Markdown Converter")
+st.title("文件轉 Markdown 轉換器")
 
 # Initialize session state if it doesn't exist
 if 'converter' not in st.session_state:
@@ -367,19 +370,19 @@ if 'converter' not in st.session_state:
         logger.debug("Converter successfully created")
     except Exception as e:
         logger.error(f"Error creating converter: {str(e)}")
-        st.error(f"Error creating converter: {str(e)}")
+        st.error(f"建立轉換器時發生錯誤：{str(e)}")
         st.stop()
 
 # Main upload area
 uploaded_file = st.file_uploader(
-    "Upload a PDF, Word document, Excel workbook, or ZIP file containing documents",
+    "上傳 PDF、Word 文件、Excel 活頁簿，或包含文件的 ZIP 檔案",
     type=['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip'],
     key='pdf_uploader',
-    help="Drag and drop or click to select one PDF/Word/Excel file or one ZIP file containing documents (max 200MB)"
+    help="拖放或點選一個 PDF、Word、Excel 檔案，或一個包含文件的 ZIP 檔案（最大 200MB）"
 )
 
 # Unified convert button
-convert_clicked = st.button("Convert to Markdown", type="primary")
+convert_clicked = st.button("轉換為 Markdown", type="primary")
 
 # Process uploaded file
 if convert_clicked:
@@ -388,15 +391,15 @@ if convert_clicked:
 
         if file_extension in SUPPORTED_DOCUMENT_EXTENSIONS:
             try:
-                with st.spinner('Converting file...'):
+                with st.spinner('正在轉換檔案...'):
                     markdown_text = convert_uploaded_document(uploaded_file)
                     output_filename = os.path.splitext(uploaded_file.name)[0] + '.md'
 
-                    st.success("Conversion completed!")
+                    st.success("轉換完成！")
                     display_uploaded_documents([uploaded_file.name], "uploaded_document_list")
                     display_markdown_preview(markdown_text, "uploaded_document_markdown_preview")
                     st.download_button(
-                        label="Download Markdown file",
+                        label="下載 Markdown 檔案",
                         data=markdown_text,
                         file_name=output_filename,
                         mime="text/markdown"
@@ -404,19 +407,19 @@ if convert_clicked:
 
             except Exception as e:
                 logger.error(f"Error processing document file: {str(e)}")
-                st.error(f"Error processing document file: {str(e)}")
+                st.error(f"處理文件檔案時發生錯誤：{str(e)}")
 
         elif file_extension == '.zip':
             try:
-                with st.spinner('Converting document files from ZIP...'):
+                with st.spinner('正在轉換 ZIP 中的文件檔案...'):
                     markdown_zip, converted_count, markdown_files, uploaded_document_names = convert_uploaded_zip(uploaded_file)
                     output_filename = os.path.splitext(uploaded_file.name)[0] + '_markdown.zip'
 
-                    st.success(f"Conversion completed! Converted {converted_count} document file(s).")
+                    st.success(f"轉換完成！已轉換 {converted_count} 個文件檔案。")
                     display_uploaded_documents(uploaded_document_names, "zip_uploaded_document_list")
                     display_zip_markdown_previews(markdown_files)
                     st.download_button(
-                        label="Download Markdown ZIP file",
+                        label="下載 Markdown ZIP 檔案",
                         data=markdown_zip,
                         file_name=output_filename,
                         mime="application/zip"
@@ -424,12 +427,12 @@ if convert_clicked:
 
             except zipfile.BadZipFile:
                 logger.error("Uploaded file is not a valid ZIP file")
-                st.error("Uploaded file is not a valid ZIP file.")
+                st.error("上傳的檔案不是有效的 ZIP 檔案。")
             except Exception as e:
                 logger.error(f"Error processing ZIP file: {str(e)}")
-                st.error(f"Error processing ZIP file: {str(e)}")
+                st.error(f"處理 ZIP 檔案時發生錯誤：{str(e)}")
 
         else:
-            st.error("Please upload a PDF, Word document, Excel workbook, or ZIP file containing supported documents.")
+            st.error("請上傳 PDF、Word 文件、Excel 活頁簿，或包含支援文件的 ZIP 檔案。")
     else:
-        st.warning("Please upload a PDF, Word document, Excel workbook, or ZIP file containing supported documents first")
+        st.warning("請先上傳 PDF、Word 文件、Excel 活頁簿，或包含支援文件的 ZIP 檔案。")
